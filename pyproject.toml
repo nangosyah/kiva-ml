@@ -1,0 +1,24 @@
+[project]
+name = "kiva-ml"
+version = "0.1.0"
+description = "End-to-end Kiva Uganda loan sector classification pipeline (extract, transform, train, deploy, serve)."
+requires-python = ">=3.9,<3.10"
+dependencies = [
+    "pandas==2.3.1",
+    "numpy==2.0.2",
+    "scipy==1.13.1",
+    "scikit-learn==1.6.1",
+    "joblib==1.5.3",
+    "requests==2.32.5",
+    "pins==0.9.1",
+    "vetiver==0.2.6",
+    "fastapi==0.128.8",
+    "uvicorn==0.38.0",
+    "shiny==1.5.0",
+]
+
+[dependency-groups]
+dev = [
+    "jupyter",
+    "ipykernel",
+]

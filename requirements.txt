@@ -1,0 +1,24 @@
+# Pinned to the exact versions used to train and pin the model
+# (pyenv 3.9.16 environment). Posit Connect will build its own isolated
+# environment from this file, so these versions must match what created
+# the pins/pins_board artifacts, or you will hit the same
+# "InconsistentVersionWarning" / unpickling errors we saw when the blog
+# post's Quarto render picked up a different scikit-learn version.
+pandas==2.3.1
+numpy==2.0.2
+scipy==1.13.1
+scikit-learn==1.6.1
+joblib==1.5.3
+requests==2.32.5
+
+# pins/vetiver: model storage and deployment
+pins==0.9.1
+vetiver==0.2.6
+
+# vetiver's API layer (also needed directly if deploy.py is deployed
+# as its own content item)
+fastapi==0.128.8
+uvicorn==0.38.0
+
+# Shiny app
+shiny==1.5.0

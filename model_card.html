@@ -70,7 +70,7 @@ ul.task-list li input[type="checkbox"] {
 <h2 class="anchored" data-anchor-id="model-details">Model details</h2>
 <ul>
 <li>Developed as a worked example for an end-to-end Python ML pipeline tutorial, using Kiva’s public loan API (<code>api.kivaws.org</code>).</li>
-<li>A <code>LogisticRegression</code> classifier (<code>class_weight="balanced"</code>) over TF-IDF features (up to 300 terms, English stop words removed) of the borrower’s free-text description of loan use. No numeric features are included — a <code>loan_amount</code> feature was tested and dropped because it added no measurable signal beyond the text (cross-validated accuracy 0.876 vs.&nbsp;0.874 with it included).</li>
+<li>A <code>LogisticRegression</code> classifier (<code>class_weight="balanced"</code>) over TF-IDF features (up to 300 terms, English stop words removed) of the borrower’s free-text description of loan use. No numeric features are included, a <code>loan_amount</code> feature was tested and dropped because it added no measurable signal beyond the text (cross-validated accuracy 0.876 vs.&nbsp;0.874 with it included).</li>
 <li>Predicts one of 3 classes: <code>Agriculture</code>, <code>Business</code> (merged from Retail + Services), <code>Personal</code> (merged from Food, Clothing, Health, Housing, Construction, and a long tail of rarer original Kiva sectors).</li>
 <li>Pin version Version(created=datetime.datetime(2026, 8, 19, 21, 46, 36), hash=‘c188f’), created 20260819T214636Z.</li>
 </ul>
@@ -105,7 +105,7 @@ ul.task-list li input[type="checkbox"] {
 <li>Training data: 1,600 Uganda loan listings pulled from the Kiva API (<code>kiva_extract.py</code>), tidied and re-labeled (<code>transform.py</code>).</li>
 <li>The model’s prototype/signature:</li>
 </ul>
-<div id="934c4424" class="cell" data-execution_count="2">
+<div id="dba9cb6a" class="cell" data-execution_count="2">
 <div class="cell-output cell-output-display" data-execution_count="2">
 <pre><code>{'properties': {'use': {'example': 'to buy more bitenge fabriques for sale.',
    'title': 'Use',
@@ -123,7 +123,7 @@ ul.task-list li input[type="checkbox"] {
 <h2 class="anchored" data-anchor-id="quantitative-analyses">Quantitative analyses</h2>
 <section id="overall-performance" class="level3">
 <h3 class="anchored" data-anchor-id="overall-performance">Overall performance</h3>
-<div id="ec5656c8" class="cell" data-execution_count="3">
+<div id="9fb5a198" class="cell" data-execution_count="3">
 <div class="cell-output cell-output-stdout">
 <pre><code>Accuracy: 0.900
 F1 macro: 0.891</code></pre>
@@ -132,7 +132,7 @@ F1 macro: 0.891</code></pre>
 </section>
 <section id="disaggregated-performance-per-class" class="level3">
 <h3 class="anchored" data-anchor-id="disaggregated-performance-per-class">Disaggregated performance (per class)</h3>
-<div id="01467cf5" class="cell" data-execution_count="4">
+<div id="36d09a84" class="cell" data-execution_count="4">
 <div class="cell-output cell-output-stdout">
 <pre><code>              precision    recall  f1-score   support
 
@@ -149,7 +149,7 @@ weighted avg       0.91      0.90      0.90       400
 </section>
 <section id="confusion-matrix" class="level3">
 <h3 class="anchored" data-anchor-id="confusion-matrix">Confusion matrix</h3>
-<div id="3eee3b8c" class="cell" data-execution_count="5">
+<div id="167d3b68" class="cell" data-execution_count="5">
 <div class="cell-output cell-output-display" data-execution_count="5">
 <div>
 

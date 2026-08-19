@@ -33,7 +33,7 @@ A [model card](https://doi.org/10.1145/3287560.3287596) provides brief, transpar
 ## Model details
 
 - Developed as a worked example for an end-to-end Python ML pipeline tutorial, using Kiva's public loan API (`api.kivaws.org`).
-- A `LogisticRegression` classifier (`class_weight="balanced"`) over TF-IDF features (up to 300 terms, English stop words removed) of the borrower's free-text description of loan use. No numeric features are included — a `loan_amount` feature was tested and dropped because it added no measurable signal beyond the text (cross-validated accuracy 0.876 vs. 0.874 with it included).
+- A `LogisticRegression` classifier (`class_weight="balanced"`) over TF-IDF features (up to 300 terms, English stop words removed) of the borrower's free-text description of loan use. No numeric features are included, a `loan_amount` feature was tested and dropped because it added no measurable signal beyond the text (cross-validated accuracy 0.876 vs. 0.874 with it included).
 - Predicts one of 3 classes: `Agriculture`, `Business` (merged from Retail + Services), `Personal` (merged from Food, Clothing, Health, Housing, Construction, and a long tail of rarer original Kiva sectors).
 - Pin version `{python} v_meta.version`, created `{python} v_meta.created`.
 
@@ -63,6 +63,7 @@ A [model card](https://doi.org/10.1145/3287560.3287596) provides brief, transpar
 #| echo: false
 v.prototype.model_json_schema()
 ```
+
 - Evaluation data: a stratified 20% held-out split (400 loans), untouched until this final evaluation.
 
 ## Quantitative analyses
