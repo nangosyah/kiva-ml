@@ -1,0 +1,104 @@
+---
+title: "Model Card: Kiva Uganda Loan Sector Classifier"
+output:
+  html_document
+---
+
+```{python}
+#| echo: false
+#| include: false
+import datetime
+import pandas as pd
+import pins
+import vetiver
+from sklearn.metrics import (
+    accuracy_score, classification_report, confusion_matrix, f1_score,
+)
+
+board = pins.board_folder("pins_board", allow_pickle_read=True)
+v = vetiver.VetiverModel.from_pin(board, "kiva_sector_model")
+v_meta = board.pin_meta("kiva_sector_model")
+
+test = board.pin_read("kiva_sector_test")
+X_test = test.drop(columns=["sector_grouped"])
+y_test = test["sector_grouped"]
+y_pred = v.model.predict(X_test)
+
+accuracy = accuracy_score(y_test, y_pred)
+f1_macro = f1_score(y_test, y_pred, average="macro")
+```
+
+A [model card](https://doi.org/10.1145/3287560.3287596) provides brief, transparent, responsible reporting for a trained machine learning model.
+
+## Model details
+
+- Developed as a worked example for an end-to-end Python ML pipeline tutorial, using Kiva's public loan API (`api.kivaws.org`).
+- A `LogisticRegression` classifier (`class_weight="balanced"`) over TF-IDF features (up to 300 terms, English stop words removed) of the borrower's free-text description of loan use. No numeric features are included — a `loan_amount` feature was tested and dropped because it added no measurable signal beyond the text (cross-validated accuracy 0.876 vs. 0.874 with it included).
+- Predicts one of 3 classes: `Agriculture`, `Business` (merged from Retail + Services), `Personal` (merged from Food, Clothing, Health, Housing, Construction, and a long tail of rarer original Kiva sectors).
+- Pin version `{python} v_meta.version`, created `{python} v_meta.created`.
+
+## Intended use
+
+- Intended as a demonstration of a reproducible Python ML pipeline (extract → transform → train → deploy → serve), not as a production lending or risk tool.
+- Reasonable use: classifying new Kiva-style Uganda microloan listings into a coarse business-sector taxonomy, e.g. for dashboarding or filtering.
+- Out of scope: any use to inform lending decisions, creditworthiness, or borrower risk. The model was never intended or evaluated for that purpose, and doing so would raise fairness and welfare concerns given the underlying population (largely women-owned, subsistence-level microenterprises).
+
+## Important aspects/factors
+
+- All training data comes from a single country (Uganda) and a single lender platform (Kiva); the model is unlikely to generalize to other countries, languages, or lending platforms.
+- The label taxonomy was collapsed from Kiva's original 18 sectors into 3 coarse groups specifically to balance class frequencies for this exercise; this is a modeling convenience, not a standard taxonomy.
+- The `use` field is short, templated free text written by field partners on behalf of borrowers (not by borrowers directly), which likely contributes to how learnable the vocabulary is.
+
+## Metrics
+
+- Reported: accuracy and macro-averaged F1 (macro-F1 gives equal weight to all 3 classes regardless of size, appropriate given `Agriculture` is still the largest class at ~40% of the data).
+- Computed via `sklearn.metrics.accuracy_score` / `f1_score` on a held-out 20% test split, and via 10-fold `StratifiedKFold` cross-validation during development.
+- Chosen because the target is multiclass and imbalanced enough that raw accuracy alone would understate performance on smaller classes.
+
+## Training data & evaluation data
+
+- Training data: 1,600 Uganda loan listings pulled from the Kiva API (`kiva_extract.py`), tidied and re-labeled (`transform.py`).
+- The model's prototype/signature:
+```{python}
+#| echo: false
+v.prototype.model_json_schema()
+```
+- Evaluation data: a stratified 20% held-out split (400 loans), untouched until this final evaluation.
+
+## Quantitative analyses
+
+### Overall performance
+
+```{python}
+#| echo: false
+print(f"Accuracy: {accuracy:.3f}")
+print(f"F1 macro: {f1_macro:.3f}")
+```
+
+### Disaggregated performance (per class)
+
+```{python}
+#| echo: false
+print(classification_report(y_test, y_pred))
+```
+
+### Confusion matrix
+
+```{python}
+#| echo: false
+labels = sorted(y_test.unique())
+cm = confusion_matrix(y_test, y_pred, labels=labels)
+pd.DataFrame(cm, index=labels, columns=labels)
+```
+
+## Ethical considerations
+
+- The dataset describes real microloan borrowers, most flagged with tags like `#Woman-Owned Business` or `#Refugee` in the raw Kiva data. Although this model only predicts a coarse sector label (not risk or repayment), any derivative use involving borrower-level scoring should be treated with care given the vulnerable population involved.
+- Sector labels were merged for modeling convenience; downstream users should not treat `Business`/`Personal`/`Agriculture` as authoritative categories — the original Kiva `sector` field is more precise.
+
+## Caveats & recommendations
+
+- This model does classify short, Kiva-style loan descriptions into 3 broad sectors with good accuracy (0.90 test accuracy, 0.89 macro-F1).
+- This model does not generalize to other countries, longer free-text documents, or finer-grained sector taxonomies without retraining.
+- The main confusion is `Personal` loans being misclassified as `Business` (24/140 in the test set) — likely due to vocabulary overlap between small retail/food-related personal expenses and formal small businesses.
+- We recommend retraining with fresh data periodically, since the sector-to-vocabulary mapping may drift over time or across regions.

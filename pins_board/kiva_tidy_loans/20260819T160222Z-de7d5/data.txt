@@ -1,0 +1,9 @@
+api_version: 1
+created: 20260819T160222Z
+description: null
+file: kiva_tidy_loans.csv
+file_size: 253803
+pin_hash: de7d5856c79e0669
+title: 'kiva_tidy_loans: a pinned 2000 x 12 DataFrame'
+type: csv
+user: {}

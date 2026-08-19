@@ -1,0 +1,9 @@
+api_version: 1
+created: 20260819T212657Z
+description: null
+file: kiva_sector_test.csv
+file_size: 28443
+pin_hash: ae70388026f8e4cd
+title: 'kiva_sector_test: a pinned 400 x 3 DataFrame'
+type: csv
+user: {}

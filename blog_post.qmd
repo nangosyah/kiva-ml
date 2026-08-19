@@ -1,0 +1,209 @@
+---
+title: "Sorting microloans by sector: a small, honest machine learning pipeline"
+jupyter: kiva-ml
+---
+
+::: {.callout-note}
+This report was generated using AI under general human direction. At the time of generation, the contents have not been comprehensively reviewed by a human analyst.
+:::
+
+## Why this post exists
+
+This is a small, deliberately low stakes example of building a complete machine learning pipeline in Python, from pulling raw data off a public API all the way to a working app that serves live predictions. Nothing here is meant to be taken too seriously. The dataset is small, the model is simple, and several of the modeling choices below were made for convenience rather than rigor. We will call those out as we go, because being upfront about the corners we cut is more useful than pretending there aren't any.
+
+The point of the exercise is to show the shape of a pipeline: extract, tidy, train, evaluate, deploy, serve, using tools from the Posit ecosystem (`pins`, `vetiver`, and Shiny for Python) to hold it together.
+
+## The data: microloans from Uganda
+
+The data comes from [Kiva](https://www.kiva.org), a nonprofit that connects lenders with small businesses and entrepreneurs, mostly in low income countries. Each listing includes a short, free text description, written by a Kiva field partner on the borrower's behalf, describing what the loan will actually be used for. Something like "to buy fertilizer to improve her soil for healthy coffee growing."
+
+We pulled about 2,000 loan listings from Uganda using Kiva's public API. The task we picked: predict which broad sector a loan belongs to (agriculture, business, or personal use) just from that short description.
+
+A quick caution up front: this is not a credit scoring exercise, and it should never be treated as one. We are only predicting a coarse business category, not creditworthiness or repayment risk, and the population behind this data (often women owned microenterprises, some run by refugees or elderly borrowers) deserves a bit more care than a toy blog post can offer if this were ever extended beyond illustration.
+
+```{python}
+#| label: load-packages
+import pandas as pd
+import pins
+from sklearn.compose import ColumnTransformer
+from sklearn.dummy import DummyClassifier
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
+from sklearn.model_selection import StratifiedKFold, cross_validate, train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+import numpy as np
+```
+
+```{python}
+#| label: load-data
+board = pins.board_folder("pins_board", allow_pickle_read=True)
+tidy = board.pin_read("kiva_tidy_loans")
+tidy[["sector", "sector_grouped", "use"]].head()
+```
+
+## Step 1: pulling data from an API
+
+The extraction step (`kiva_extract.py` in the repo) is nothing fancy: a loop over Kiva's `loans/search` endpoint, four pages of 500 loans each, with a short pause between requests to be polite to the API. One small gotcha worth mentioning: without a browser style `User-Agent` header, the request gets blocked outright, so that header is set explicitly.
+
+This step is also the most fragile part of the whole pipeline, since it depends entirely on a third party API staying available and unchanged. That is worth keeping in mind for any pipeline that starts with "pull data from someone else's website."
+
+## Step 2: tidying the data and picking a target
+
+Kiva's own sector labels are much finer grained than what we use here, eighteen categories in total, ranging from Agriculture (over 800 loans) down to sectors with a single loan. Modeling eighteen classes with that kind of imbalance is not a great use of anyone's time, so we made a judgment call: merge the rare sectors together, then group everything into three broader buckets.
+
+```{python}
+#| label: sector-groups
+tidy["sector_grouped"].value_counts()
+```
+
+That grouping (Agriculture on its own, Retail and Services combined into Business, everything else combined into Personal) is not an official Kiva taxonomy. It is a modeling convenience chosen to get a more balanced, more tractable classification problem. If you needed the original fine grained sectors for a real application, you would want to handle the class imbalance properly (more data, resampling, hierarchical classification) rather than merging categories away.
+
+## Step 3: why bag of words makes sense here
+
+Before reaching for anything heavier, it is worth asking why a simple bag of words model (TF-IDF plus logistic regression) is a reasonable first thing to try here, rather than an afterthought.
+
+A few reasons line up nicely for this particular dataset:
+
+- The `use` field is short and fairly templated. Field partners tend to write structured phrases like "to buy X to do Y," not free flowing prose.
+- The vocabulary is concrete and sector specific. Borrowers do not describe abstract plans, they describe fertilizer, cows, shop stock, and school fees.
+- The dataset is small (2,000 rows). A method that does not need much data to find signal, and that stays interpretable, is a sensible starting point before considering anything like embeddings or transformer models.
+- In many low income country contexts, the infrastructure to run larger NLP models is not always readily available or worth the operational cost for a problem this size. A linear model over word counts is cheap to train, cheap to serve, and easy to explain to a non technical stakeholder.
+
+Here is a look at some of the vocabulary the model actually leans on for each sector:
+
+```{python}
+#| label: bow-example
+X = tidy[["use"]]
+y = tidy["sector_grouped"]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=2984, stratify=y,
+)
+
+text_pipe = Pipeline([
+    ("preprocessor", ColumnTransformer([
+        ("use_text", TfidfVectorizer(max_features=300, stop_words="english"), "use"),
+    ])),
+    ("model", LogisticRegression(class_weight="balanced", max_iter=1000)),
+])
+text_pipe.fit(X_train, y_train)
+
+vectorizer = text_pipe.named_steps["preprocessor"].named_transformers_["use_text"]
+clf = text_pipe.named_steps["model"]
+feature_names = np.array(vectorizer.get_feature_names_out())
+
+top_terms = {}
+for i, cls in enumerate(clf.classes_):
+    top_idx = np.argsort(clf.coef_[i])[-8:][::-1]
+    top_terms[cls] = ", ".join(feature_names[top_idx])
+
+pd.DataFrame.from_dict(top_terms, orient="index", columns=["top terms"])
+```
+
+None of these are just the class name in disguise. Agriculture leans on words like manure and fertilizer, Business leans on shop and merchandise, Personal leans on everyday household words like food and clothes. That is a reasonably good sign that the model is picking up real vocabulary patterns rather than trivially matching a label to itself.
+
+## Step 4: a baseline before anything fancy
+
+Before getting excited about any model, it is worth measuring how well you could do by guessing the most common class every time.
+
+```{python}
+#| label: baseline
+cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=2984)
+scoring = {"accuracy": "accuracy", "f1_macro": "f1_macro"}
+
+baseline_pipe = Pipeline([("model", DummyClassifier(strategy="most_frequent"))])
+baseline_results = cross_validate(baseline_pipe, X_train, y_train, cv=cv, scoring=scoring)
+
+print(f"Baseline accuracy: {baseline_results['test_accuracy'].mean():.3f}")
+print(f"Baseline f1_macro: {baseline_results['test_f1_macro'].mean():.3f}")
+```
+
+Always guessing "Agriculture" gets you to about 40 percent accuracy for free, since it is the largest of the three classes. That number is the bar the real model needs to clear.
+
+## Step 5: training the real model
+
+The final pipeline is a `TfidfVectorizer` (capped at 300 terms, English stop words removed) feeding a `LogisticRegression` with `class_weight="balanced"`. We also tried adding `loan_amount` as a numeric feature alongside the text, on the theory that bigger loans might behave differently. It did not help at all, cross validated accuracy came out at 0.876 with text alone versus 0.874 with the amount included, so the final pipeline drops it and keeps things simple.
+
+```{python}
+#| label: cv-results
+text_results = cross_validate(text_pipe, X_train, y_train, cv=cv, scoring=scoring)
+
+print(f"CV accuracy: {text_results['test_accuracy'].mean():.3f} +/- {text_results['test_accuracy'].std():.3f}")
+print(f"CV f1_macro: {text_results['test_f1_macro'].mean():.3f} +/- {text_results['test_f1_macro'].std():.3f}")
+```
+
+That is a solid jump over the baseline, using nothing more complicated than word counts and a linear model.
+
+## Step 6: the one honest test
+
+The held out test set gets used exactly once, at the very end, after all modeling decisions are locked in. Using it any earlier would quietly bias the results, so it stays untouched until now.
+
+```{python}
+#| label: final-test
+import vetiver
+
+model = vetiver.VetiverModel.from_pin(board, "kiva_sector_model")
+test = board.pin_read("kiva_sector_test")
+
+X_holdout = test.drop(columns=["sector_grouped"])
+y_holdout = test["sector_grouped"]
+y_pred = model.model.predict(X_holdout)
+
+print(f"Test accuracy: {accuracy_score(y_holdout, y_pred):.3f}")
+print(f"Test f1_macro: {f1_score(y_holdout, y_pred, average='macro'):.3f}")
+```
+
+```{python}
+#| label: confusion-matrix
+labels = sorted(y_holdout.unique())
+cm = confusion_matrix(y_holdout, y_pred, labels=labels)
+pd.DataFrame(cm, index=labels, columns=labels)
+```
+
+Test performance (0.90 accuracy, 0.89 macro F1) lines up closely with the cross validated estimate, which is reassuring, it means the model is not simply overfitting to quirks of the training split. The one real weak spot: Personal loans get mistaken for Business fairly often, which makes sense once you think about it. Small scale retail and household spending share a lot of the same vocabulary (food, shop, sell), so the boundary between "personal use" and "small business" is genuinely blurry in the source data, not just a modeling failure.
+
+## Step 7: shipping it as an API and an app
+
+Once the model is trained, the rest of the pipeline is about making it usable:
+
+- `train.py` saves the fitted pipeline as a model pin using `vetiver`, alongside a separate pin for the held out test rows.
+- `deploy.py` loads that pin and wraps it in a small FastAPI app via `vetiver.VetiverAPI`, exposing a `/predict` endpoint.
+- `app.py` is a small Shiny for Python app with a text box for the loan description, which calls that local API and displays the predicted sector.
+
+```python
+# deploy.py, trimmed
+board = pins.board_folder("pins_board", allow_pickle_read=True)
+model = vetiver.VetiverModel.from_pin(board, "kiva_sector_model")
+app = vetiver.VetiverAPI(model, check_prototype=True).app
+```
+
+```python
+# app.py, trimmed
+@render.text
+@reactive.event(input.predict_btn)
+def prediction():
+    new_data = pd.DataFrame({"use": [input.use()]})
+    result = predict(ENDPOINT, new_data)
+    return f"Predicted sector: {result.iloc[0, 0]}"
+```
+
+Here is the app in action, predicting the sector for a loan described as going toward fertilizer and coffee growing:
+
+![The Shiny app predicting "Agriculture" for a coffee farming loan description](app_screenshot.png)
+
+Everything here runs locally, with `pins` standing in for a shared model store and `vetiver` standing in for a deployment layer. A real production setup would likely push these pins and this API to something like Posit Connect, which handles process management, authentication, and monitoring for you, none of which this local setup attempts to solve.
+
+## What this is not
+
+Worth spelling out plainly, since it is easy for a tidy looking pipeline to imply more confidence than it deserves:
+
+- This is not a credit risk or lending decision tool. It predicts a coarse sector label from text, nothing more.
+- The three class taxonomy (Agriculture, Business, Personal) is a modeling shortcut, not an official Kiva category.
+- The data covers one country (Uganda) and one lending platform (Kiva). There is no reason to expect this to generalize elsewhere without retraining.
+- Two thousand rows is a small dataset. Treat the metrics above as a reasonable estimate for this specific slice of data, not a universal truth about the model's quality.
+
+## Try it yourself
+
+The full code, including the extraction script, the tidying and training pipeline, the model card, and the Shiny app, is available in the [kiva-ml repository on GitHub](https://github.com/nangosyah/kiva-ml). The README walks through running each stage in order, from pulling fresh data to starting the local API and app.

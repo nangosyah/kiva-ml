@@ -1,0 +1,20 @@
+api_version: 1
+created: 20260819T212657Z
+description: A scikit-learn Pipeline model
+file: kiva_sector_model.joblib
+file_size: 21505
+pin_hash: 7a4206175587a896
+title: 'kiva_sector_model: a pinned Pipeline object'
+type: joblib
+user:
+  user: {}
+  vetiver_meta:
+    prototype: '{"loan_amount": 825, "use": "to buy more bitenge fabriques for sale."}'
+    python_version:
+    - 3
+    - 9
+    - 16
+    - final
+    - 0
+    required_pkgs:
+    - scikit-learn
