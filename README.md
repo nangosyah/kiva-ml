@@ -39,8 +39,7 @@ uv sync
 Both `requirements.txt` and `pyproject.toml`/`uv.lock` pin the same exact
 versions used to build and evaluate this project (Python 3.9.16,
 `scikit-learn==1.6.1`, etc.). `uv.lock` additionally pins the full transitive
-dependency graph (157 packages) for fully reproducible local installs; `uv
-lock` regenerates it if you ever change `pyproject.toml`.
+dependency graph (157 packages) for fully reproducible local installs; `uv lock` regenerates it if you ever change `pyproject.toml`.
 
 Run the pipeline stages in order:
 
