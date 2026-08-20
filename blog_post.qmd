@@ -41,7 +41,7 @@ tidy[["sector", "sector_grouped", "use"]].head()
 
 ## Step 1: pulling data from an API
 
-The extraction step (`kiva_extract.py` in the repo) loops over Kiva's `loans/search` endpoint and collects four pages of 500 loans each, filtered to Uganda. Requests without a browser style `User-Agent` header are rejected with a 403, so that header is set explicitly.
+The extraction step (`kiva_extract.py` in the repo) loops over Kiva's `loans/search` endpoint and collects four pages of 500 loans each, filtered to Uganda. 
 
 This step is also the most fragile part of the whole pipeline, since it depends entirely on a third party API staying available and unchanged. That is worth keeping in mind for any pipeline that starts with "pulling data from someone else's website."
 
@@ -175,19 +175,26 @@ app = vetiver.VetiverAPI(model, check_prototype=True).app
 
 ```python
 # app.py, trimmed
+board = pins.board_folder("pins_board", allow_pickle_read=True)
+model = vetiver.VetiverModel.from_pin(board, "kiva_sector_model")
+
 @render.text
 @reactive.event(input.predict_btn)
 def prediction():
     new_data = pd.DataFrame({"use": [input.use()]})
-    result = predict(ENDPOINT, new_data)
-    return f"Predicted sector: {result.iloc[0, 0]}"
+    result = model.model.predict(new_data)
+    return f"Predicted sector: {result[0]}"
 ```
+
+`app.py` loads the model pin directly rather than calling the separate API, which keeps it deployable as a single, self-contained piece of content (handy on platforms that only publish one app at a time).
 
 Here is the app in action, predicting the sector for a loan described as going toward fertilizer and coffee growing:
 
 ![The Shiny app predicting "Agriculture" for a coffee farming loan description](app_screenshot.png)
 
-Everything here runs locally, with `pins` standing in for a shared model store and `vetiver` standing in for a deployment layer. A real production setup would likely push these pins and this API to something like Posit Connect, which handles process management, authentication, and monitoring for you, none of which this local setup attempts to solve.
+**[Try the live predictor here](https://connect.posit.cloud/nangosyah/content/01a01fb0-ff97-6e6e-4409-2d9cda277861)**, it's deployed on Posit Connect Cloud and running the exact model described above.
+
+Everything here runs locally aside from that live deployment, with `pins` standing in for a shared model store and `vetiver` standing in for a deployment layer. A real production setup at scale would likely also add authentication and monitoring, neither of which this small example attempts to solve.
 
 ## conclusion
 
@@ -199,5 +206,7 @@ It's worth spelling out plainly:
 - Two thousand rows is a small dataset. Treat the metrics above as a reasonable estimate for this specific slice of data, not a universal truth about the model's quality.
 
 ## Try it yourself
+
+Play with the [live predictor](https://connect.posit.cloud/nangosyah/content/01a01fb0-ff97-6e6e-4409-2d9cda277861) directly, no setup required.
 
 The full code, including the extraction script, the tidying and training pipeline, the model card, and the Shiny app, is available in the [kiva-ml repository on GitHub](https://github.com/nangosyah/kiva-ml). The README walks through running each stage in order, from pulling fresh data to starting the local API and app.
