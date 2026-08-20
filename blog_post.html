@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>From API to app: a small ML pipeline for Kiva loan descriptions</title>
+<title>A small “end-to-end” ML pipeline for Kiva Loans</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -67,6 +67,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="blog_post_files/libs/bootstrap/bootstrap.min.js"></script>
 <link href="blog_post_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="blog_post_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="blog_post_files/libs/quarto-diagram/mermaid.min.js"></script>
+<script src="blog_post_files/libs/quarto-diagram/mermaid-init.js"></script>
+<link href="blog_post_files/libs/quarto-diagram/mermaid.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
 
 <script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
@@ -82,7 +85,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">From API to app: a small ML pipeline for Kiva loan descriptions</h1>
+<h1 class="title">A small “end-to-end” ML pipeline for Kiva Loans</h1>
 </div>
 
 
@@ -99,8 +102,25 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </header>
 
 
-<p>This is a small, low stakes example of building a complete machine learning pipeline in Python, from pulling raw data off a public API all the way to a working app that serves live predictions. Nothing here is meant to be taken too seriously. The dataset is small, the model is simple, and several of the modeling choices below were made for convenience rather than rigor.</p>
+<p>This is a small, low stakes example of building a complete machine learning pipeline in Python, from pulling raw data off a public API all the way to a working app that serves live predictions. Nothing here is meant to be taken too seriously. The dataset is small, the model is simple, and several of the modeling choices below were made for convenience.</p>
 <p>The point of the exercise is to show the shape of a pipeline: extract, tidy, train, evaluate, deploy, serve, using tools from the Posit ecosystem (<code>pins</code>, <code>vetiver</code>, and Shiny for Python) to hold it together.</p>
+<div class="cell" data-layout-align="default">
+<div class="cell-output-display">
+<div>
+<p></p><figure class="figure"><p></p>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+    A["Extract\nkiva_extract.py"] --&gt; B["Tidy\ntransform.py"]
+    B --&gt; C["Train\ntrain.py"]
+    C --&gt; D["Evaluate\nevaluate.py"]
+    C --&gt; E["Deploy\ndeploy.py"]
+    E --&gt; F["Serve\napp.py"]
+</pre>
+</div>
+<p></p></figure><p></p>
+</div>
+</div>
+</div>
 <section id="the-data-microloans-from-uganda" class="level2">
 <h2 class="anchored" data-anchor-id="the-data-microloans-from-uganda">The data: microloans from Uganda</h2>
 <p>The data comes from <a href="https://www.kiva.org">Kiva</a>, a nonprofit that connects lenders with small businesses and entrepreneurs, mostly in low income countries. Each listing includes a short, free text description, written by a Kiva field partner on the borrower’s behalf, describing what the loan will actually be used for. Something like “to buy fertilizer to improve her soil for healthy coffee growing.”</p>
@@ -115,10 +135,12 @@ Important
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>This pipeline predicts a coarse sector label, nothing more. It says nothing about creditworthiness, repayment risk, or whether a loan should be approved, and it must never be used as an input to those decisions. The borrowers behind this data are largely women running microenterprises, alongside refugee and elderly clients, and any extension of this work beyond illustration would need a much closer look at fairness, consent, and the downstream effects of a wrong label. I use this example typically for illustration purposes.</p>
+<p>This pipeline predicts sector labels. I use this example typically for illustration purposes.</p>
 </div>
 </div>
 <div id="load-packages" class="cell" data-execution_count="1">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pins</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.compose <span class="im">import</span> ColumnTransformer</span>
@@ -130,12 +152,16 @@ Important
 <span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.pipeline <span class="im">import</span> Pipeline</span>
 <span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.preprocessing <span class="im">import</span> StandardScaler</span>
 <span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
 <div id="cell-load-data" class="cell" data-execution_count="2">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>board <span class="op">=</span> pins.board_folder(<span class="st">"pins_board"</span>, allow_pickle_read<span class="op">=</span><span class="va">True</span>)</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>tidy <span class="op">=</span> board.pin_read(<span class="st">"kiva_tidy_loans"</span>)</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>tidy[[<span class="st">"sector"</span>, <span class="st">"sector_grouped"</span>, <span class="st">"use"</span>]].head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div id="load-data" class="cell-output cell-output-display" data-execution_count="10">
+</details>
+<div id="load-data" class="cell-output cell-output-display" data-execution_count="2">
 <div>
 
 
@@ -195,8 +221,11 @@ Important
 <h2 class="anchored" data-anchor-id="step-2-tidying-the-data-and-picking-a-target">Step 2: tidying the data and picking a target</h2>
 <p>Kiva’s own sector labels are much finer grained than what we use here, eighteen categories in total, ranging from Agriculture (over 800 loans) down to sectors with a single loan. Modeling eighteen classes with that kind of imbalance is not a great use of anyone’s time, so I made a judgment call to merge the rare sectors together, then group everything into three broader buckets.</p>
 <div id="cell-sector-groups" class="cell" data-execution_count="3">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>tidy[<span class="st">"sector_grouped"</span>].value_counts()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div id="sector-groups" class="cell-output cell-output-display" data-execution_count="11">
+</details>
+<div id="sector-groups" class="cell-output cell-output-display" data-execution_count="3">
 <pre><code>sector_grouped
 Agriculture    805
 Personal       700
@@ -217,6 +246,8 @@ Name: count, dtype: int64</code></pre>
 </ul>
 <p>Here is a look at some of the vocabulary the model actually leans on for each sector:</p>
 <div id="cell-example" class="cell" data-execution_count="4">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>X <span class="op">=</span> tidy[[<span class="st">"use"</span>]]</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>y <span class="op">=</span> tidy[<span class="st">"sector_grouped"</span>]</span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -242,7 +273,8 @@ Name: count, dtype: int64</code></pre>
 <span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a>    top_terms[cls] <span class="op">=</span> <span class="st">", "</span>.join(feature_names[top_idx])</span>
 <span id="cb5-24"><a href="#cb5-24" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb5-25"><a href="#cb5-25" aria-hidden="true" tabindex="-1"></a>pd.DataFrame.from_dict(top_terms, orient<span class="op">=</span><span class="st">"index"</span>, columns<span class="op">=</span>[<span class="st">"top terms"</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div id="example" class="cell-output cell-output-display" data-execution_count="12">
+</details>
+<div id="example" class="cell-output cell-output-display" data-execution_count="4">
 <div>
 
 
@@ -278,6 +310,8 @@ Name: count, dtype: int64</code></pre>
 <h2 class="anchored" data-anchor-id="step-4-a-baseline-model">Step 4: a baseline model</h2>
 <p>Before using any model, it is worth measuring how well you could do by guessing the most common class every time.</p>
 <div id="baseline" class="cell" data-execution_count="5">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>cv <span class="op">=</span> StratifiedKFold(n_splits<span class="op">=</span><span class="dv">10</span>, shuffle<span class="op">=</span><span class="va">True</span>, random_state<span class="op">=</span><span class="dv">2984</span>)</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>scoring <span class="op">=</span> {<span class="st">"accuracy"</span>: <span class="st">"accuracy"</span>, <span class="st">"f1_macro"</span>: <span class="st">"f1_macro"</span>}</span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -286,6 +320,7 @@ Name: count, dtype: int64</code></pre>
 <span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Baseline accuracy: </span><span class="sc">{</span>baseline_results[<span class="st">'test_accuracy'</span>]<span class="sc">.</span>mean()<span class="sc">:.3f}</span><span class="ss">"</span>)</span>
 <span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Baseline f1_macro: </span><span class="sc">{</span>baseline_results[<span class="st">'test_f1_macro'</span>]<span class="sc">.</span>mean()<span class="sc">:.3f}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>Baseline accuracy: 0.403
 Baseline f1_macro: 0.191</code></pre>
@@ -297,10 +332,13 @@ Baseline f1_macro: 0.191</code></pre>
 <h2 class="anchored" data-anchor-id="step-5-training-the-model">Step 5: training the model</h2>
 <p>The final pipeline is a <code>TfidfVectorizer</code> (capped at 300 terms, English stop words removed) feeding a <code>LogisticRegression</code> with <code>class_weight="balanced"</code>. We also tried adding <code>loan_amount</code> as a numeric feature alongside the text, on the theory that bigger loans might behave differently. It did not help at all, cross validated accuracy came out at 0.876 with text alone versus 0.874 with the amount included, so the final pipeline drops it and keeps things simple.</p>
 <div id="cv-results" class="cell" data-execution_count="6">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>text_results <span class="op">=</span> cross_validate(text_pipe, X_train, y_train, cv<span class="op">=</span>cv, scoring<span class="op">=</span>scoring)</span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"CV accuracy: </span><span class="sc">{</span>text_results[<span class="st">'test_accuracy'</span>]<span class="sc">.</span>mean()<span class="sc">:.3f}</span><span class="ss"> +/- </span><span class="sc">{</span>text_results[<span class="st">'test_accuracy'</span>]<span class="sc">.</span>std()<span class="sc">:.3f}</span><span class="ss">"</span>)</span>
 <span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"CV f1_macro: </span><span class="sc">{</span>text_results[<span class="st">'test_f1_macro'</span>]<span class="sc">.</span>mean()<span class="sc">:.3f}</span><span class="ss"> +/- </span><span class="sc">{</span>text_results[<span class="st">'test_f1_macro'</span>]<span class="sc">.</span>std()<span class="sc">:.3f}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>CV accuracy: 0.876 +/- 0.029
 CV f1_macro: 0.866 +/- 0.033</code></pre>
@@ -312,6 +350,8 @@ CV f1_macro: 0.866 +/- 0.033</code></pre>
 <h2 class="anchored" data-anchor-id="step-6-testing-the-model">Step 6: testing the model</h2>
 <p>The held out test set gets used exactly once, at the very end, after all modeling decisions are done. Using it any earlier would quietly bias the results, so it stays untouched until now.</p>
 <div id="final-test" class="cell" data-execution_count="7">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> vetiver</span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> vetiver.VetiverModel.from_pin(board, <span class="st">"kiva_sector_model"</span>)</span>
@@ -323,16 +363,20 @@ CV f1_macro: 0.866 +/- 0.033</code></pre>
 <span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Test accuracy: </span><span class="sc">{</span>accuracy_score(y_holdout, y_pred)<span class="sc">:.3f}</span><span class="ss">"</span>)</span>
 <span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Test f1_macro: </span><span class="sc">{</span>f1_score(y_holdout, y_pred, average<span class="op">=</span><span class="st">'macro'</span>)<span class="sc">:.3f}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>Test accuracy: 0.900
 Test f1_macro: 0.891</code></pre>
 </div>
 </div>
 <div id="cell-confusion-matrix" class="cell" data-execution_count="8">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>labels <span class="op">=</span> <span class="bu">sorted</span>(y_holdout.unique())</span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>cm <span class="op">=</span> confusion_matrix(y_holdout, y_pred, labels<span class="op">=</span>labels)</span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>pd.DataFrame(cm, index<span class="op">=</span>labels, columns<span class="op">=</span>labels)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div id="confusion-matrix" class="cell-output cell-output-display" data-execution_count="16">
+</details>
+<div id="confusion-matrix" class="cell-output cell-output-display" data-execution_count="8">
 <div>
 
 
@@ -379,22 +423,8 @@ Test f1_macro: 0.891</code></pre>
 <li><code>train.py</code> saves the fitted pipeline as a model pin using <code>vetiver</code>, alongside a separate pin for the held out test rows.</li>
 <li><code>deploy.py</code> loads that pin and wraps it in a small FastAPI app via <code>vetiver.VetiverAPI</code>, exposing a <code>/predict</code> endpoint.</li>
 <li><code>app.py</code> is a small Shiny for Python app with a text box for the loan description, which calls that local API and displays the predicted sector.</li>
+<li><code>app.py</code> loads the model pin directly rather than calling the separate API, which keeps it deployable as a single, self-contained piece of content (handy on platforms that only publish one app at a time).</li>
 </ul>
-<div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># deploy.py, trimmed</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>board <span class="op">=</span> pins.board_folder(<span class="st">"pins_board"</span>, allow_pickle_read<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> vetiver.VetiverModel.from_pin(board, <span class="st">"kiva_sector_model"</span>)</span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> vetiver.VetiverAPI(model, check_prototype<span class="op">=</span><span class="va">True</span>).app</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># app.py, trimmed</span></span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>board <span class="op">=</span> pins.board_folder(<span class="st">"pins_board"</span>, allow_pickle_read<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> vetiver.VetiverModel.from_pin(board, <span class="st">"kiva_sector_model"</span>)</span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="at">@render.text</span></span>
-<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.event</span>(<span class="bu">input</span>.predict_btn)</span>
-<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> prediction():</span>
-<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>    new_data <span class="op">=</span> pd.DataFrame({<span class="st">"use"</span>: [<span class="bu">input</span>.use()]})</span>
-<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>    result <span class="op">=</span> model.model.predict(new_data)</span>
-<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ss">f"Predicted sector: </span><span class="sc">{</span>result[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p><code>app.py</code> loads the model pin directly rather than calling the separate API, which keeps it deployable as a single, self-contained piece of content (handy on platforms that only publish one app at a time).</p>
 <p>Here is the app in action, predicting the sector for a loan described as going toward fertilizer and coffee growing:</p>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
@@ -404,10 +434,7 @@ Test f1_macro: 0.891</code></pre>
 </div>
 <p><strong><a href="https://connect.posit.cloud/nangosyah/content/01a01fb0-ff97-6e6e-4409-2d9cda277861">Try the live predictor here</a></strong>, it’s deployed on Posit Connect Cloud and running the exact model described above.</p>
 <p>Everything here runs locally aside from that live deployment, with <code>pins</code> standing in for a shared model store and <code>vetiver</code> standing in for a deployment layer. A real production setup at scale would likely also add authentication and monitoring, neither of which this small example attempts to solve.</p>
-</section>
-<section id="conclusion" class="level2">
-<h2 class="anchored" data-anchor-id="conclusion">conclusion</h2>
-<p>It’s worth spelling out plainly:</p>
+<p>It’s worth noting:</p>
 <ul>
 <li>This is not a credit risk or lending decision tool. It predicts a coarse sector label from text, nothing more.</li>
 <li>The three class taxonomy (Agriculture, Business, Personal) is a modeling shortcut, not an official Kiva category.</li>

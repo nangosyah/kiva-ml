@@ -1,11 +1,23 @@
 ---
-title: "From API to app: a small ML pipeline for Kiva loan descriptions"
+title: 'A small "end-to-end" ML pipeline for Kiva Loans'
 jupyter: kiva-ml
+format:
+  html:
+    code-fold: true
 ---
 
-This is a small, low stakes example of building a complete machine learning pipeline in Python, from pulling raw data off a public API all the way to a working app that serves live predictions. Nothing here is meant to be taken too seriously. The dataset is small, the model is simple, and several of the modeling choices below were made for convenience rather than rigor.
+This is a small, low stakes example of building a complete machine learning pipeline in Python, from pulling raw data off a public API all the way to a working app that serves live predictions. Nothing here is meant to be taken too seriously. The dataset is small, the model is simple, and several of the modeling choices below were made for convenience.
 
 The point of the exercise is to show the shape of a pipeline: extract, tidy, train, evaluate, deploy, serve, using tools from the Posit ecosystem (`pins`, `vetiver`, and Shiny for Python) to hold it together.
+
+```{mermaid}
+flowchart LR
+    A["Extract\nkiva_extract.py"] --> B["Tidy\ntransform.py"]
+    B --> C["Train\ntrain.py"]
+    C --> D["Evaluate\nevaluate.py"]
+    C --> E["Deploy\ndeploy.py"]
+    E --> F["Serve\napp.py"]
+```
 
 ## The data: microloans from Uganda
 
@@ -14,7 +26,7 @@ The data comes from [Kiva](https://www.kiva.org), a nonprofit that connects lend
 I pulled about 2,000 loan listings from Uganda using Kiva's public API. The task I picked: predict which broad sector a loan belongs to (agriculture, business, or personal use) just from that short description.
 
 ::: {.callout-important}
-This pipeline predicts a coarse sector label, nothing more. It says nothing about creditworthiness, repayment risk, or whether a loan should be approved, and it must never be used as an input to those decisions. The borrowers behind this data are largely women running microenterprises, alongside refugee and elderly clients, and any extension of this work beyond illustration would need a much closer look at fairness, consent, and the downstream effects of a wrong label. I use this example typically for illustration purposes.
+This pipeline predicts sector labels. I use this example typically for illustration purposes.
 :::
 
 ```{python}
@@ -165,28 +177,7 @@ Once the model is trained, the rest of the pipeline is about making it usable:
 - `train.py` saves the fitted pipeline as a model pin using `vetiver`, alongside a separate pin for the held out test rows.
 - `deploy.py` loads that pin and wraps it in a small FastAPI app via `vetiver.VetiverAPI`, exposing a `/predict` endpoint.
 - `app.py` is a small Shiny for Python app with a text box for the loan description, which calls that local API and displays the predicted sector.
-
-```python
-# deploy.py, trimmed
-board = pins.board_folder("pins_board", allow_pickle_read=True)
-model = vetiver.VetiverModel.from_pin(board, "kiva_sector_model")
-app = vetiver.VetiverAPI(model, check_prototype=True).app
-```
-
-```python
-# app.py, trimmed
-board = pins.board_folder("pins_board", allow_pickle_read=True)
-model = vetiver.VetiverModel.from_pin(board, "kiva_sector_model")
-
-@render.text
-@reactive.event(input.predict_btn)
-def prediction():
-    new_data = pd.DataFrame({"use": [input.use()]})
-    result = model.model.predict(new_data)
-    return f"Predicted sector: {result[0]}"
-```
-
-`app.py` loads the model pin directly rather than calling the separate API, which keeps it deployable as a single, self-contained piece of content (handy on platforms that only publish one app at a time).
+- `app.py` loads the model pin directly rather than calling the separate API, which keeps it deployable as a single, self-contained piece of content (handy on platforms that only publish one app at a time).
 
 Here is the app in action, predicting the sector for a loan described as going toward fertilizer and coffee growing:
 
@@ -196,9 +187,7 @@ Here is the app in action, predicting the sector for a loan described as going t
 
 Everything here runs locally aside from that live deployment, with `pins` standing in for a shared model store and `vetiver` standing in for a deployment layer. A real production setup at scale would likely also add authentication and monitoring, neither of which this small example attempts to solve.
 
-## conclusion
-
-It's worth spelling out plainly:
+It's worth noting:
 
 - This is not a credit risk or lending decision tool. It predicts a coarse sector label from text, nothing more.
 - The three class taxonomy (Agriculture, Business, Personal) is a modeling shortcut, not an official Kiva category.
