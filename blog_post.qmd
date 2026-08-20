@@ -3,7 +3,7 @@ title: "From API to app: a small ML pipeline for Kiva loan descriptions"
 jupyter: kiva-ml
 ---
 
-This is a small, deliberately low stakes example of building a complete machine learning pipeline in Python, from pulling raw data off a public API all the way to a working app that serves live predictions. Nothing here is meant to be taken too seriously. The dataset is small, the model is simple, and several of the modeling choices below were made for convenience rather than rigor.
+This is a small, low stakes example of building a complete machine learning pipeline in Python, from pulling raw data off a public API all the way to a working app that serves live predictions. Nothing here is meant to be taken too seriously. The dataset is small, the model is simple, and several of the modeling choices below were made for convenience rather than rigor.
 
 The point of the exercise is to show the shape of a pipeline: extract, tidy, train, evaluate, deploy, serve, using tools from the Posit ecosystem (`pins`, `vetiver`, and Shiny for Python) to hold it together.
 

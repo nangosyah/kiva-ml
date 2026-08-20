@@ -1,22 +1,29 @@
 """
 Shiny for Python app serving real-time sector predictions.
 
-Calls the local vetiver API (see deploy.py) to classify a loan into
+Loads the vetiver model pin directly and classifies a loan into
 Agriculture / Business / Personal based on the borrower's stated use
 of funds.
 
-Run the API first:
-    uvicorn deploy:app --port 8080
-
-Then run this app:
+Run with:
     shiny run app.py
+
+This app loads the model directly (no separate API process needed), which
+keeps it deployable as a single piece of content on platforms like Posit
+Connect Cloud that don't support a standalone FastAPI service alongside it.
+If you do want the model served as its own API (e.g. for other clients to
+call), see deploy.py.
 """
 import pandas as pd
-import requests
+import pins
+import vetiver
 from shiny import App, reactive, render, ui
-from vetiver import predict, vetiver_endpoint
 
-ENDPOINT = vetiver_endpoint("http://127.0.0.1:8080/predict")
+BOARD_PATH = "pins_board"
+MODEL_PIN = "kiva_sector_model"
+
+board = pins.board_folder(BOARD_PATH, allow_pickle_read=True)
+model = vetiver.VetiverModel.from_pin(board, MODEL_PIN)
 
 app_ui = ui.page_fluid(
     ui.h2("Kiva Loan Sector Predictor"),
@@ -37,16 +44,10 @@ def server(input, output, session):
     def prediction():
         new_data = pd.DataFrame({"use": [input.use()]})
         try:
-            result = predict(ENDPOINT, new_data)
-        except requests.exceptions.ConnectionError:
-            return (
-                "Could not reach the model API at "
-                f"{ENDPOINT}. Is it running? Start it with:\n"
-                "  uvicorn deploy:app --port 8080"
-            )
+            result = model.model.predict(new_data)
         except Exception as e:
             return f"Prediction failed: {e}"
-        return f"Predicted sector: {result.iloc[0, 0]}"
+        return f"Predicted sector: {result[0]}"
 
 
 app = App(app_ui, server)
